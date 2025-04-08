@@ -7,6 +7,7 @@ using TMPro;
 using System.Diagnostics;
 
 using Debug = UnityEngine.Debug;
+using static System.Net.Mime.MediaTypeNames;
 
 public class MainManager : MonoBehaviour
 {
@@ -15,21 +16,15 @@ public class MainManager : MonoBehaviour
     //Variables pertaining to the initial menu and participant info
     public GameObject menuObject;
     public TMP_InputField textField;
-    public Toggle cond;
     public GameObject strtButton;
-
-    // things to be logged
-    public int Trial;
-    public int[] CamPosA;
-    public int[] CamPosB;
-    public string[] RoomNameA;
-    public string[] RoomNameB;
-    public string[] ClutterA;
-    public string[] ClutterB;
 
     //generic variables related to trial spawning and logging
     private float trialTime = 0;
     public bool IsInitialized;
+    public GameObject CalibrationPoints;
+
+    //associated eye coordinate variables
+    private bool startEyetracker;
 
     //variables for the data file info
     private static string participantName;
@@ -39,9 +34,6 @@ public class MainManager : MonoBehaviour
 
     //file path strings
     private string rawEvents, fileCheck;
-
-    //game objects for the trial cover
-    public GameObject coverObject;
 
     private void Awake()
     {
@@ -58,6 +50,8 @@ public class MainManager : MonoBehaviour
     void Start()
     {
         saveGame(gameObject); //reference our mainManager (so can be accessed from other scripts)
+
+        CalibrationPoints.SetActive(false);
 
         //gets and creates a date
         day = System.DateTime.Today.Day;
@@ -85,7 +79,6 @@ public class MainManager : MonoBehaviour
         }
 
         Date = monthString + dayString + year.ToString();
-
     }
 
     void FixedUpdate()
@@ -94,41 +87,54 @@ public class MainManager : MonoBehaviour
         Button strt = strtButton.GetComponent<Button>();
         strt.onClick.AddListener(startExperiment);
         strt.onClick.AddListener(saveName);
-        trialTime += Time.deltaTime;
 
-        //TextWriter rw = new StreamWriter(rawEvents, true);
-        //rw.WriteLine(ViewEyeData.x + "," + ViewEyeData.y + "," + trialTime + "," + lostParticipant + "," + screenbounds);
-        //rw.Close();
+        //starts the experimental timers
+        if (startEyetracker)
+        {
+            trialTime += Time.deltaTime;
+
+            TextWriter rw = new StreamWriter(rawEvents, true);
+            rw.WriteLine(trialTime + "," + EyeTrackingRay.objectname + "," +
+                LeftEyePos.eyePos[0] + "," + LeftEyePos.eyePos[1] + "," + LeftEyePos.eyePos[2] + "," +
+                RightEyePos.eyePos[0] + "," + RightEyePos.eyePos[1] + "," + RightEyePos.eyePos[2] + "," +
+                LeftEyePos.eyeRot[0] + "," + LeftEyePos.eyeRot[1] + "," + LeftEyePos.eyeRot[2] + "," +
+                RightEyePos.eyeRot[0] + "," + RightEyePos.eyeRot[1] + "," + RightEyePos.eyeRot[2]);
+            rw.Close();
+        }
+
+        //close application situations
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            UnityEngine.Application.Quit();
+        }
     }
 
     public void saveName()
     {
         participantName = textField.text;
 
-        string name = System.Environment.UserName; //get the name of the current computer user
-        fileCheck = @"C:\Users\" + name + @"\Dropbox\Kerri_Walter\CVIRooms\VR\Data\" + participantName + "_" + Date + ".csv"; //check if file exists
-        //fileCheck = @"C:\Users\" + name + @"\Dropbox\Kerri_Walter\CVIRooms\VR\Data\" + "XX" + "_" + Date + ".csv"; //fileame
-        //rawEvents = @"C:\Users\" + name + @"\Dropbox\Kerri_Walter\CVIRooms\VR\Data\" + participantName + "_" + Date + "_RAW" + ".csv";
-
+        string name = System.Environment.UserName; //get the name of the current computer user        
+        fileCheck = @"C:\Users\" + name + @"\Dropbox\Kerri_Walter\CVIRooms\VR\Data\" + participantName + "_" + Date + "_Calibration" + ".csv";
+        rawEvents = @"C:\Users\" + name + @"\Dropbox\Kerri_Walter\CVIRooms\VR\Data\" + participantName + "_" + Date + "_CalibrationRAW" + ".csv";
+        
         TextWriter tw = new StreamWriter(fileCheck, false); //write the new file
-        tw.WriteLine("Trial, Condition, RoomName, Clutter, StartEnd, TrialTime");
+        tw.WriteLine("TrialTime, Point, Validated");
         tw.Close();
 
-        //TextWriter rw = new StreamWriter(rawEvents, false); //write the new file
-        //rw.WriteLine("ViewEyeDataX, ViewEyeDataY, TrialTime, LostParticipant, Screenbounds");
-        //rw.Close();
+        TextWriter rw = new StreamWriter(rawEvents, false); //write the new file
+        rw.WriteLine("TrialTime, ObjectName, Lx, Ly, Lz, Rx, Ry, Rz, LRotx, LRoty, LRotz, RRotx, RRoty, RRotz");
+        rw.Close();
     }
 
     void startExperiment()
     {
-        //startEyetracker = true;
+        startEyetracker = true;
 
         menuObject.SetActive(false); //hide menu screen
 
-        IsInitialized = true; //tell trial counter to start experiment               
-        TrialCounter.counter = 0;
-        Trial = 0;
+        CalibrationPoints.SetActive(true);
 
+        IsInitialized = true; //tell other functions/scripts to start experiment               
     }
 
     public void saveGame(GameObject g)
@@ -136,38 +142,7 @@ public class MainManager : MonoBehaviour
         if (IsInitialized)
         {
             TextWriter tw = new StreamWriter(fileCheck, true);
-            if (TrialCounter.startTrial) //start of trial
-            {
-                if (Trial == 0)
-                {
-                    tw.WriteLine(Trial + "," + "Practice" + "," + "Practice" + "," + "Practice" + "," + "StartTrial" + "," + trialTime);
-                }
-
-                else if (cond.isOn)
-                {
-                    tw.WriteLine(Trial + "," + XRCamMove.roomType + "," + RoomNameA[Trial - 1] + "," + ClutterA[Trial - 1] + "," + "StartTrial" + "," + trialTime);
-                }
-                else
-                {
-                    tw.WriteLine(Trial + "," + XRCamMove.roomType + "," + RoomNameB[Trial - 1] + "," + ClutterB[Trial - 1] + "," + "StartTrial" + "," + trialTime);
-                }
-            }
-            else //end of trial
-            {
-                if (Trial == 0)
-                {
-                    tw.WriteLine(Trial + "," + "Practice" + "," + "Practice" + "," + "Practice" + "," + "EndTrial" + "," + trialTime);
-                }
-
-                else if (cond.isOn)
-                {
-                    tw.WriteLine(Trial + "," + XRCamMove.roomType + "," + RoomNameA[Trial - 1] + "," + ClutterA[Trial - 1] + "," + "EndTrial" + "," + trialTime);
-                }
-                else
-                {
-                    tw.WriteLine(Trial + "," + XRCamMove.roomType + "," + RoomNameB[Trial - 1] + "," + ClutterB[Trial - 1] + "," + "EndTrial" + "," + trialTime);
-                }
-            }
+            tw.WriteLine(trialTime + "," + EyeInteractable.point + "," + "Validated");
             tw.Close();
         }
     }
